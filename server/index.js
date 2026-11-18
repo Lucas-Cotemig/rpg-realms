@@ -11,7 +11,7 @@ const UNIVERSES = require('./universes');
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '100kb' }));
+app.use(express.json({ limit: '5mb' }));
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
@@ -68,6 +68,22 @@ async function ensureSeed(db, campaignId) {
     [campaignId, s.hash, s.seed]
   );
   return ins.rows[0];
+}
+
+// Rola dados no servidor (commit-reveal) dentro de uma transação e registra rolagem + evento
+async function performRoll(db, { campaignId, user, parsed, clientSeed, requestId, label }) {
+  const seed = await ensureSeed(db, campaignId);
+  const nonce = seed.next_nonce;
+  await db.query('update rpg.seeds set next_nonce=next_nonce+1 where id=$1', [seed.id]);
+  const out = dice.computeRoll(parsed, seed.server_seed, clientSeed, nonce);
+  const ins = await db.query(
+    `insert into rpg.rolls(campaign_id, user_id, request_id, seed_id, seed_hash, nonce, client_seed, expression, label, terms, modifier, total)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning *`,
+    [campaignId, user.id, requestId, seed.id, seed.seed_hash, nonce, clientSeed, parsed.normalized, label || '', JSON.stringify(out.terms), parsed.modifier, out.total]
+  );
+  await logEvent(db, { campaignId, userId: user.id, type: 'rolagem', result: { rollId: Number(ins.rows[0].id), expression: parsed.normalized, total: out.total, label: label || '' } });
+  await db.query('update rpg.campaigns set updated_at=now() where id=$1', [campaignId]);
+  return { ...ins.rows[0], display_name: user.displayName };
 }
 
 async function campaignMembers(campaignId) {
@@ -267,6 +283,8 @@ async function removeMember(campaignId, userId, byUserId, type) {
     const p = await db.query('select display_name from rpg.profiles where user_id=$1', [userId]);
     const del = await db.query(`delete from rpg.members where campaign_id=$1 and user_id=$2 and role<>'admin'`, [campaignId, userId]);
     if (!del.rowCount) throw new HttpError(400, 'Este participante não pode ser removido');
+    await db.query(`delete from rpg.tokens where campaign_id=$1 and character_id in (select id from rpg.characters where owner_id=$2)`, [campaignId, userId]);
+    await db.query(`delete from rpg.campaign_characters where campaign_id=$1 and character_id in (select id from rpg.characters where owner_id=$2)`, [campaignId, userId]);
     await logEvent(db, { campaignId, userId: byUserId, type, result: { userId } });
     const text = type === 'jogador_saiu' ? `${p.rows[0].display_name} saiu da campanha.` : `${p.rows[0].display_name} foi removido da campanha.`;
     return (await db.query(`insert into rpg.messages(campaign_id, kind, body) values ($1,'system',$2) returning *`, [campaignId, text])).rows[0];
@@ -364,6 +382,9 @@ app.get('/api/campaigns/:id/events', httpAuth, wrap(async (req, res) => {
   res.json(r.rows.map((e) => ({ id: Number(e.id), type: e.type, userId: e.user_id, displayName: e.display_name, before: e.state_before, after: e.state_after, result: e.result, consequences: e.consequences, createdAt: e.created_at })));
 }));
 
+// ---------- personagens, mapas e combate ----------
+const gameSockets = require('./game')({ app, io, q, tx, httpAuth, wrap, HttpError, requireMember, membership, logEvent, performRoll, rollDto, dice, isUuid, rateLimit });
+
 // ---------- arquivos do site ----------
 app.use('/vendor/supabase.js', express.static(require.resolve('@supabase/supabase-js/dist/umd/supabase.js')));
 app.use(express.static(path.join(__dirname, '..', 'public'), { index: false, maxAge: '1h' }));
@@ -406,8 +427,12 @@ io.on('connection', (socket) => {
     if (!socket.data.campaigns.has(cid)) throw new HttpError(403, 'Entre na sala primeiro');
   };
 
+  gameSockets(socket, guard);
+
   socket.on('room:join', guard(async ({ campaignId }, reply) => {
-    await requireMember(campaignId, user.id);
+    const myRole = await requireMember(campaignId, user.id);
+    socket.data.roles = socket.data.roles || {};
+    socket.data.roles[campaignId] = myRole;
     if (!socket.data.campaigns.has(campaignId)) {
       socket.join(`c:${campaignId}`);
       socket.data.campaigns.add(campaignId);
@@ -477,20 +502,7 @@ io.on('connection', (socket) => {
 
     if (!rateLimit(`d:${user.id}`, 6, 4000)) throw new HttpError(429, 'Espere um pouco antes de rolar de novo');
 
-    const roll = await tx(async (db) => {
-      const seed = await ensureSeed(db, campaignId);
-      const nonce = seed.next_nonce;
-      await db.query('update rpg.seeds set next_nonce=next_nonce+1 where id=$1', [seed.id]);
-      const out = dice.computeRoll(parsed, seed.server_seed, clientSeed, nonce);
-      const ins = await db.query(
-        `insert into rpg.rolls(campaign_id, user_id, request_id, seed_id, seed_hash, nonce, client_seed, expression, label, terms, modifier, total)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning *`,
-        [campaignId, user.id, requestId, seed.id, seed.seed_hash, nonce, clientSeed, parsed.normalized, text, JSON.stringify(out.terms), parsed.modifier, out.total]
-      );
-      await logEvent(db, { campaignId, userId: user.id, type: 'rolagem', result: { rollId: Number(ins.rows[0].id), expression: parsed.normalized, total: out.total } });
-      await db.query('update rpg.campaigns set updated_at=now() where id=$1', [campaignId]);
-      return { ...ins.rows[0], display_name: user.displayName };
-    });
+    const roll = await tx((db) => performRoll(db, { campaignId, user, parsed, clientSeed, requestId, label: text }));
     const dto = rollDto(roll);
     io.to(`c:${campaignId}`).emit('dice:result', { campaignId, roll: dto });
     reply({ ok: true, roll: dto });

@@ -1,6 +1,7 @@
 import { $, $$, html, raw, el, esc, toast, modal, initials, timeStr } from './util.js';
 import { state, initCore, devLogin, logout, api, loadMe, loadUniverses, universe } from './core.js';
 import { mountTable } from './table.js';
+import { viewCharacterList, viewCharacterEditor } from './characters.js';
 
 const app = document.getElementById('app');
 let cleanup = null;
@@ -47,6 +48,9 @@ async function route() {
   const camp = /^\/campanha\/([0-9a-f-]{36})$/.exec(path);
   if (camp) { app.innerHTML = topbar() + '<div id="view"></div>'; bindTopbar(); cleanup = await mountTable($('#view'), camp[1], navigate); return; }
   if (path === '/universos') return viewUniverses();
+  if (path === '/personagens') { app.innerHTML = topbar() + '<div id="view"></div>'; bindTopbar(); await viewCharacterList($('#view'), navigate); return; }
+  const ch = /^\/personagens\/(novo|[0-9a-f-]{36})$/.exec(path);
+  if (ch) { app.innerHTML = topbar() + '<div id="view"></div>'; bindTopbar(); cleanup = await viewCharacterEditor($('#view'), ch[1], navigate); return; }
   if (path === '/configuracoes') return viewSettings();
   if (path !== '/') return navigate('/', true);
   return viewHome();
@@ -153,6 +157,7 @@ function topbar() {
   return html`<header class="topbar">
     <a class="logo" href="/" data-link>${raw(SIGIL)}<span class="hide-sm">RPG Realms</span></a>
     <div class="grow"></div>
+    <a class="btn ghost small hide-sm" href="/personagens" data-link>Personagens</a>
     <a class="btn ghost small hide-sm" href="/universos" data-link>Universos</a>
     <a class="btn ghost small" href="/configuracoes" data-link title="Configurações">⚙<span class="hide-sm">Configurações</span></a>
     <div class="userchip"><div class="avatar sm">${initials(state.me.displayName)}</div><span class="hide-sm">${state.me.displayName}</span></div>
@@ -171,15 +176,15 @@ async function viewHome() {
     <div class="actions">
       <button class="panel action-card" id="newCamp"><div class="ico">⚔</div><h3>Criar nova campanha</h3><div class="muted small">Você será o administrador da sala e receberá um código para convidar os amigos.</div></button>
       <button class="panel action-card" id="joinCamp"><div class="ico">⚿</div><h3>Entrar em uma campanha</h3><div class="muted small">Recebeu um código de 6 letras? Use aqui para entrar na mesa.</div></button>
+      <a class="panel action-card" href="/personagens" data-link style="color:inherit;text-decoration:none"><div class="ico">♟</div><h3>Meus personagens</h3><div class="muted small">Crie e edite fichas com atributos, perícias, inventário e imagem.</div></a>
       <a class="panel action-card" href="/universos" data-link style="color:inherit;text-decoration:none"><div class="ico">✧</div><h3>Biblioteca de universos</h3><div class="muted small">Conheça os 12 universos disponíveis para suas aventuras.</div></a>
     </div>
     <div class="section-title"><h2>Minhas campanhas</h2></div>
     <div id="camps"><div class="loading" style="min-height:120px"><div class="spinner"></div></div></div>
     <div class="section-title"><h2>Em construção</h2></div>
     <div class="roadmap">
-      <div><b>Personagens</b>Editor, biblioteca e skins — próxima etapa</div>
-      <div><b>Tabuleiro</b>Mapas, tokens e neblina de guerra</div>
-      <div><b>Regras e combate</b>Iniciativa, turnos e inventário</div>
+      <div><b>Neblina de guerra</b>Áreas de visão e revelar o mapa aos poucos</div>
+      <div><b>Rituais e paranormal</b>Poderes, rituais e dano de sanidade</div>
       <div><b>Mestre IA</b>Narração e NPCs controlados por IA</div>
     </div>
   </main>`;

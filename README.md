@@ -2,7 +2,22 @@
 
 Plataforma de RPG de mesa online, multiplayer e em tempo real.
 
-**Etapa atual:** Etapa 1 (estrutura) + dados e chat
+**Etapas prontas:** 1 (estrutura), 2 (personagens), 3 (mapa multiplayer), 4 (dados), 5 (combate) — sistema **Investigação Paranormal**, regras próprias inspiradas no estilo das campanhas do Cellbit
+
+### Novidades das etapas 2, 3 e 5
+- Fichas: classe (combatente, especialista, ocultista), NEX, atributos AGI/FOR/INT/PRE/VIG, 28 perícias com graus, PV/PE/Sanidade calculados no servidor, inventário com armas/proteções/consumíveis, condições, imagem (PNG transparente), histórico de evolução
+- Biblioteca "Meus personagens" e levar personagem para qualquer campanha
+- Mapas com imagem própria ou quadriculado, grade ajustável, zoom e arrastar; mapas secretos (só o mestre vê até ativar)
+- Tokens de personagens, NPCs e inimigos sincronizados em tempo real, com barra de vida, tokens ocultos e regra "mover só na vez"
+- Combate: iniciativa rolada no servidor, ordem de turnos, ataque contra Defesa (teste = vários d20, fica o maior + perícia), crítico pela margem da arma, dano aplicado automaticamente, testes de perícia, dano/cura manual
+- Tudo registrado no histórico de eventos
+
+### Regras (resumo)
+- Teste: 1d20 por ponto do atributo, fica o maior (atributo 0: 2d20, fica o menor) + perícia (treinado +5, veterano +10, expert +15)
+- Ataque: Luta (FOR) ou Pontaria (AGI) contra Defesa (10 + AGI + proteção). Crítico se o d20 alcançar a margem da arma: dados de dano multiplicados. Corpo a corpo soma FOR ao dano
+- PV/PE/SAN por classe e NEX (ver `server/rules/paranormal.js`)
+
+**Etapa 1** também inclui:
 - Cadastro, login e recuperação de senha (Supabase Auth)
 - Campanhas com código de convite, limite de participantes e administrador
 - Participantes online em tempo real, remoção de jogadores, sair da campanha

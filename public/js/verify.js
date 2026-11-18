@@ -35,8 +35,12 @@ export async function verifyRoll(roll, seedHex) {
     for (const v of t.results) {
       const expected = await dieValue(seedHex, roll.clientSeed, roll.nonce, index++, t.sides);
       if (expected !== v) return false;
-      total += t.sign * v;
     }
+    let kept = t.results;
+    if (t.keep) kept = [...t.results].sort((a, b) => (t.keep === 'h' ? b - a : a - b)).slice(0, t.keepN);
+    const sum = kept.reduce((a, b) => a + b, 0);
+    if (sum !== t.sum) return false;
+    total += t.sign * sum;
   }
   return total === roll.total;
 }

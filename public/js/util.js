@@ -75,3 +75,26 @@ export function confirmBox(title, text, okLabel = 'Confirmar', danger = false) {
 export async function copyText(text) {
   try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
 }
+
+// Reduz uma imagem escolhida pelo usuário e devolve como data URL (mantém transparência com WEBP)
+export function resizeImage(file, maxSide = 512, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    if (!file || !/^image\/(png|jpeg|webp|gif)$/.test(file.type)) { reject(new Error('Escolha uma imagem PNG, JPG ou WEBP')); return; }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      let data = c.toDataURL('image/webp', quality);
+      if (!data.startsWith('data:image/webp')) data = c.toDataURL('image/png');
+      resolve({ dataUrl: data, width: w, height: h });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Não foi possível abrir a imagem')); };
+    img.src = url;
+  });
+}

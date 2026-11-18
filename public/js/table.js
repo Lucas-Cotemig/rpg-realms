@@ -3,6 +3,7 @@ import { $, $$, html, raw, el, esc, toast, initials, timeStr, randomHex, uuid, c
 import { state, api, emit, getSocket, universe } from './core.js';
 import { shapeSvg, pickerIcon, animateRoll, breakdown, critClass } from './dice-ui.js';
 import { verifyRoll, sha256Hex } from './verify.js';
+import { createBoard } from './board.js';
 
 const DICE = [4, 6, 8, 10, 12, 20, 100];
 
@@ -11,7 +12,7 @@ export async function mountTable(root, campaignId, navigate) {
   const me = state.me;
   const s = {
     camp: null, members: [], online: new Set(), rolls: [], rollIds: new Set(), messages: [], msgIds: new Set(),
-    seeds: new Map(), verify: new Map(), typing: new Map(), tab: 'dados', mobile: 'mesa', unread: 0,
+    seeds: new Map(), verify: new Map(), typing: new Map(), tab: 'mapa', mobile: 'mesa', unread: 0,
     sel: 20, qty: 1, mod: 0, custom: 30, exprTouched: false, rolling: false, chatTo: '', alive: true,
   };
 
@@ -35,7 +36,7 @@ export async function mountTable(root, campaignId, navigate) {
       <div class="panel-body scroll" id="groupBody"></div>
     </aside>
     <section class="panel show-m" id="pTable">
-      <div class="subtabs"><button data-tab="dados" class="active">Dados</button><button data-tab="verificacao">Verificação</button><button data-tab="registro">Registro</button></div>
+      <div class="subtabs"><button data-tab="mapa" class="active">Mapa</button><button data-tab="dados">Dados</button><button data-tab="fichas">Fichas</button><button data-tab="verificacao">Verificação</button><button data-tab="registro">Registro</button></div>
       <div class="scroll" style="flex:1" id="tabBody"></div>
     </section>
     <aside class="panel" id="pChat">
@@ -113,8 +114,13 @@ export async function mountTable(root, campaignId, navigate) {
   // ---------- abas centrais ----------
   $$('.subtabs button', root).forEach((b) => b.onclick = () => { s.tab = b.dataset.tab; $$('.subtabs button', root).forEach((x) => x.classList.toggle('active', x === b)); renderTab(); });
 
+  const boardCtl = createBoard({ campaignId, isAdmin });
   function renderTab() {
     const body = $('#tabBody', root);
+    body.classList.toggle('no-scroll', s.tab === 'mapa');
+    if (s.tab === 'mapa') { boardCtl.mount(body, 'map'); return; }
+    if (s.tab === 'fichas') { boardCtl.mount(body, 'sheets'); return; }
+    boardCtl.unmount();
     if (s.tab === 'dados') renderDice(body);
     else if (s.tab === 'verificacao') renderVerify(body);
     else renderLog(body);
@@ -309,9 +315,24 @@ export async function mountTable(root, campaignId, navigate) {
     jogador_entrou: () => 'entrou na campanha',
     jogador_saiu: () => 'saiu da campanha',
     jogador_removido: (e) => `removeu ${nameOf(e.result?.userId)} da campanha`,
-    rolagem: (e) => `rolou ${e.result?.expression} = ${e.result?.total}`,
+    rolagem: (e) => `rolou ${e.result?.expression} = ${e.result?.total}${e.result?.label ? ' (' + e.result.label + ')' : ''}`,
     semente_revelada: (e) => `revelou a semente dos dados (${e.result?.rolls} rolagens)`,
     codigo_renovado: () => 'gerou um novo código de convite',
+    personagem_entrou: (e) => `levou ${e.result?.nome} para a mesa`,
+    personagem_saiu: (e) => `tirou ${e.result?.nome} da campanha`,
+    ficha_editada: (e) => `editou a ficha de ${e.result?.nome}`,
+    mapa_criado: (e) => `criou o mapa “${e.result?.name}”`,
+    mapa_ativado: () => 'abriu um mapa para todos',
+    mapa_apagado: () => 'apagou um mapa',
+    regra_movimento: (e) => `mudou o movimento para “${e.after?.moveMode === 'turno' ? 'só na vez' : 'livre'}”`,
+    token_criado: (e) => `colocou ${e.result?.qty > 1 ? e.result.qty + '× ' : ''}${e.result?.name} no mapa`,
+    token_editado: (e) => `editou ${e.after?.name}`,
+    token_removido: (e) => `removeu ${e.result?.name} do mapa`,
+    vida_alterada: (e) => `${e.result?.nome}: PV ${e.before?.pv} → ${e.after?.pv} (${e.consequences?.motivo})`,
+    combate_iniciado: (e) => `iniciou o combate: ${(e.after?.ordem || []).join(', ')}`,
+    turno_passado: (e) => `passou o turno (rodada ${e.after?.rodada}, vez de ${e.after?.vez})`,
+    combate_encerrado: () => 'encerrou o combate',
+    ataque: (e) => `${e.result?.atacante} atacou ${e.result?.alvo} com ${e.result?.arma}: ${e.result?.teste} vs ${e.result?.defesa} — ${e.result?.acerto ? (e.result?.critico ? 'crítico, ' : '') + e.result?.dano + ' de dano' : 'errou'}`,
     limite_alterado: (e) => `alterou o limite de participantes de ${e.before?.maxPlayers} para ${e.after?.maxPlayers}`,
   };
   const nameOf = (id) => (s.members.find((m) => m.userId === id) || {}).displayName || 'um participante';
@@ -484,6 +505,7 @@ export async function mountTable(root, campaignId, navigate) {
 
   return () => {
     s.alive = false;
+    boardCtl.destroy();
     for (const [ev, fn] of Object.entries(handlers)) socket.off(ev, fn);
     socket.emit('room:leave', { campaignId });
     document.removeEventListener('visibilitychange', onVisible);

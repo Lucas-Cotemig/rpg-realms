@@ -133,3 +133,64 @@ alter table rpg.seeds     enable row level security;
 alter table rpg.rolls     enable row level security;
 alter table rpg.messages  enable row level security;
 alter table rpg.events    enable row level security;
+
+-- ===== Etapas 2, 3 e 5: personagens, mapas e combate =====
+alter table rpg.campaigns add column if not exists rules text not null default 'paranormal';
+alter table rpg.campaigns add column if not exists settings jsonb not null default '{}'::jsonb;
+alter table rpg.campaigns add column if not exists combat jsonb;
+alter table rpg.campaigns add column if not exists active_map_id uuid;
+
+create table if not exists rpg.characters (
+  id          uuid primary key default gen_random_uuid(),
+  owner_id    uuid not null references rpg.profiles(user_id),
+  data        jsonb not null,
+  avatar      text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+create index if not exists characters_owner_idx on rpg.characters(owner_id);
+
+create table if not exists rpg.campaign_characters (
+  campaign_id  uuid not null references rpg.campaigns(id),
+  character_id uuid not null references rpg.characters(id) on delete cascade,
+  added_at     timestamptz not null default now(),
+  primary key (campaign_id, character_id)
+);
+
+create table if not exists rpg.maps (
+  id          uuid primary key default gen_random_uuid(),
+  campaign_id uuid not null references rpg.campaigns(id),
+  name        text not null,
+  image       text,
+  width       int not null default 1600,
+  height      int not null default 1000,
+  grid        int not null default 70,
+  show_grid   boolean not null default true,
+  created_at  timestamptz not null default now()
+);
+create index if not exists maps_campaign_idx on rpg.maps(campaign_id);
+
+create table if not exists rpg.tokens (
+  id           uuid primary key default gen_random_uuid(),
+  campaign_id  uuid not null references rpg.campaigns(id),
+  map_id       uuid not null references rpg.maps(id) on delete cascade,
+  character_id uuid references rpg.characters(id) on delete cascade,
+  owner_id     uuid references rpg.profiles(user_id),
+  kind         text not null check (kind in ('pc','npc','inimigo')),
+  name         text not null,
+  color        text not null default '#d9ad52',
+  image        text,
+  x            real not null default 0,
+  y            real not null default 0,
+  size         int not null default 1,
+  hidden       boolean not null default false,
+  stats        jsonb,
+  conditions   jsonb not null default '[]'::jsonb,
+  created_at   timestamptz not null default now()
+);
+create index if not exists tokens_map_idx on rpg.tokens(map_id);
+
+alter table rpg.characters          enable row level security;
+alter table rpg.campaign_characters enable row level security;
+alter table rpg.maps                enable row level security;
+alter table rpg.tokens              enable row level security;

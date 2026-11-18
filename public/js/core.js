@@ -110,3 +110,22 @@ export function emit(event, payload) {
     });
   });
 }
+
+export async function loadRules() {
+  if (!state.rules) state.rules = await fetch('/api/rules/paranormal').then((r) => r.json());
+  return state.rules;
+}
+
+// Mesmo cálculo do servidor, só para mostrar a prévia enquanto a ficha é editada
+export function previewDerived(d, rules) {
+  const c = rules.classes[d.classe] || rules.classes.combatente;
+  const n = Math.max(1, rules.nex.indexOf(Number(d.nex)) + 1);
+  const a = d.atributos;
+  const prot = (d.inventario || []).filter((i) => i.equipado && i.tipo === 'protecao').reduce((s, i) => s + (Number(i.defesa) || 0), 0);
+  return {
+    pvMax: Math.max(1, c.pv[0] + a.vig + (n - 1) * (c.pv[1] + a.vig)),
+    peMax: Math.max(0, c.pe[0] + a.pre + (n - 1) * (c.pe[1] + a.pre)),
+    sanMax: c.san[0] + (n - 1) * c.san[1],
+    defesa: 10 + a.agi + prot,
+  };
+}

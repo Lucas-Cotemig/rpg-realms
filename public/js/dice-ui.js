@@ -70,13 +70,13 @@ export function animateRoll(tray, roll, meId) {
     else if (singleD20 && items[0].value === 1) { note = ' — <b style="color:#fca5a5">FALHA CRÍTICA!</b>'; tray.appendChild(Object.assign(document.createElement('div'), { className: 'burst red' })); }
     else tray.appendChild(Object.assign(document.createElement('div'), { className: 'burst' }));
     const extra = items.length > MAX_SHOW ? ` <span class="small">(+${items.length - MAX_SHOW} dados não exibidos)</span>` : '';
-    caption.innerHTML = `<div class="tray-total">${roll.total}</div>
+    caption.innerHTML = `${roll.outcome ? `<div class="tray-who" style="color:#fde68a;font-weight:700">${esc(roll.outcome)}</div>` : ''}<div class="tray-total">${roll.total}</div>
       <div class="tray-who">${esc(roll.displayName)}${roll.userId === meId ? ' (você)' : ''} · ${esc(roll.expression)}${roll.label ? ' · ' + esc(roll.label) : ''}${note}${extra}</div>`;
   }, reduce ? 150 : 1100);
 }
 
 export function breakdown(roll) {
-  const parts = roll.terms.map((t, i) => `${t.sign < 0 ? '− ' : i ? '+ ' : ''}[${t.results.join(', ')}]`);
+  const parts = roll.terms.map((t, i) => `${t.sign < 0 ? '− ' : i ? '+ ' : ''}[${t.results.join(', ')}]${t.keep ? (t.keep === 'h' ? ' maior: ' : ' menor: ') + t.sum : ''}`);
   if (roll.modifier) parts.push(`${roll.modifier < 0 ? '−' : '+'} ${Math.abs(roll.modifier)}`);
   return parts.join(' ');
 }
